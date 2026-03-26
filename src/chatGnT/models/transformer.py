@@ -32,13 +32,14 @@ class TransformerModel(nn.Module):
         self.decoder.bias.data.zero_()
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
+    # Default src_mask is None
     def forward(self, src, src_key_padding_mask, src_mask=None):
         src = self.encoder(src) * math.sqrt(self.ninp)
         src = self.pos_encoder(src)
         # output = self.transformer_encoder(src, src_mask)
         output = self.transformer_encoder(
             src,
-            mask=src_mask,   # no causal mask
+            mask=src_mask,
             src_key_padding_mask=src_key_padding_mask
         )
         output = self.decoder(output)
