@@ -2,6 +2,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .positional_encoding import PositionalEncoding
 
 # Based on tutorial https://h-huang.github.io/tutorials/beginner/transformer_tutorial.html
 
@@ -11,8 +12,7 @@ class TransformerModel(nn.Module):
         super(TransformerModel, self).__init__()
         from torch.nn import TransformerEncoder, TransformerEncoderLayer
         self.model_type = 'Transformer'
-        # self.pos_encoder = PositionalEncoding(ninp, dropout)
-        #TODO: if re-add, add PositionalEncoding class from tutorial
+        self.pos_encoder = PositionalEncoding(ninp, dropout)
         encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         self.encoder = nn.Embedding(ntoken, ninp)
@@ -32,13 +32,14 @@ class TransformerModel(nn.Module):
         self.decoder.bias.data.zero_()
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
+    # Default src_mask is None
     def forward(self, src, src_key_padding_mask, src_mask=None):
         src = self.encoder(src) * math.sqrt(self.ninp)
-        # src = self.pos_encoder(src)
+        src = self.pos_encoder(src)
         # output = self.transformer_encoder(src, src_mask)
         output = self.transformer_encoder(
             src,
-            mask=src_mask,   # no causal mask
+            mask=src_mask,
             src_key_padding_mask=src_key_padding_mask
         )
         output = self.decoder(output)

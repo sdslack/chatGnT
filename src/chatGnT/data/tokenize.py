@@ -31,3 +31,56 @@ def recipe_to_tokens(df):
 
     return recipes_tokens
 
+def make_vocab(recipes_tokens):
+    """
+    Create a vocabulary from tokenized recipes.
+
+    Args:
+        recipes_tokens (List[List[str]]): List of tokenized recipes
+    """
+    # Flatten all tokens into a single list
+    tokens_flat = [token for recipe in recipes_tokens for token in recipe]
+    # Get unique tokens and assign an ID to each
+    vocab = {token: i+1 for i, token in enumerate(sorted(set(tokens_flat)))}
+    # Add a padding token for batching & a recipe end token
+    vocab["<pad>"] = 0
+    vocab["<end>"] = len(vocab)
+
+    return vocab
+
+def invert_vocab(vocab):
+    """
+    Create an inverse vocabulary mapping from ID to token.
+
+    Args:
+        vocab (Dict[str, int]): Vocabulary mapping token to ID
+
+    Returns:
+        Dict[int, str]: Inverse vocabulary mapping ID to token
+    """
+    return {i: token for token, i in vocab.items()}
+
+def embed_tokens(recipes_tokens, vocab):
+    """
+    Convert tokenized recipes into sequences of token IDs.
+
+    Args:
+        recipes_tokens (List[List[str]]): List of tokenized recipes
+        vocab (Dict[str, int]): Vocabulary mapping token to ID
+
+    Returns:
+        List[List[int]]: List of recipes represented as sequences of token IDs
+    """
+    tokens_encoded = [[vocab[t] for t in recipe] for recipe in recipes_tokens]
+    lengths = [len(r) for r in tokens_encoded]
+
+    # Now add end token and pad to same length (seq_length = 48 + 1 for end token)
+    max_len = max(len(r) for r in tokens_encoded)
+
+    # Add end token and pad
+    tokens_padded = [
+        r + [vocab["<end>"]] + [vocab["<pad>"]] * (max_len - len(r))
+        for r in tokens_encoded
+    ]
+
+    return tokens_padded
