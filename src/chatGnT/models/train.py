@@ -14,14 +14,18 @@ def train(model, dataloader, device, pad_id, optimizer, criterion, epoch=None, l
         x = x.transpose(0, 1)  # (seq_len, batch)
         y = y.transpose(0, 1)
 
-        # padding masks
+        # padding mask
         pad_mask = (x == pad_id).transpose(0, 1)  # (batch, seq_len)
+
+        # causal mask
+        seq_len = x.size(0)
+        src_mask = model.generate_square_subsequent_mask(seq_len).to(device)
 
         # Forward pass
         output = model(
             src=x,
             src_key_padding_mask=pad_mask,
-            src_mask=None)
+            src_mask=src_mask)
 
         vocab_size = output.size(-1)  # get number of classes
         loss = criterion(
