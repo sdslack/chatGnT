@@ -15,11 +15,15 @@ def evaluate(model, dataloader, device, pad_id, criterion):
             # padding mask
             pad_mask = (x == pad_id).transpose(0, 1)
 
+            # causal mask
+            seq_len = x.size(0)
+            src_mask = model.generate_square_subsequent_mask(seq_len).to(device)
+
             # forward
             output = model(
                 src=x,
                 src_key_padding_mask=pad_mask,
-                src_mask=None)
+                src_mask=src_mask)
             # output_flat = output.view(-1, ntokens)
 
             vocab_size = output.size(-1)  # get number of classes
