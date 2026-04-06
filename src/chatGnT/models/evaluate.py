@@ -32,6 +32,7 @@ def evaluate(model, dataloader, device, pad_id, criterion):
                 y.reshape(-1))
             
             total_loss += loss.item()
-    avg_loss = total_loss / len(dataloader)
 
+    avg_loss = total_loss / len(dataloader)
     return avg_loss
+
