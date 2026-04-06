@@ -4,10 +4,10 @@
 
 def recipe_to_tokens(df):
     """
-    Convert a DataFrame with columns ['amount', 'unit', 'ingred'] into structured token sequences.
+    Convert a DataFrame with columns ['amt_unit', 'ingred'] into structured token sequences.
 
     Args:
-        df (pd.DataFrame): Must have columns ['amount', 'unit', 'ingred']
+        df (pd.DataFrame): Must have columns ['amt_unit', 'ingred']
 
     Returns:
         List[List[str]]: Each recipe as a list of tokens
@@ -21,12 +21,9 @@ def recipe_to_tokens(df):
     for _, recipe in grouped:
         tokens = []
         for _, row in recipe.iterrows():
-            amt = str(row['amt']).strip()
-            unit = str(row['unit']).strip()  # if pd.notna(row['unit']) else "unit"
+            amt_unit = str(row['amt_unit']).strip()
             ingred = str(row['ingred']).strip()
-            # if qty.lower() == 'nan' or ing.lower() == 'nan':
-            #     continue
-            tokens += [f"<amt>{amt}</amt>", f"<unit>{unit}</unit>", f"<ingred>{ingred}</ingred>", "<sep>"]
+            tokens += [f"<amt>{amt_unit}</amt>", f"<ingred>{ingred}</ingred>"]
         recipes_tokens.append(tokens)
 
     return recipes_tokens
