@@ -7,11 +7,10 @@ from .positional_encoding import PositionalEncoding
 # Based on tutorial https://h-huang.github.io/tutorials/beginner/transformer_tutorial.html
 
 
-
-class TransformerModel(nn.Module):
+class TransformerModel_SingleTask(nn.Module):
 
     def __init__(self, ntoken, ninp, nhead, nhid, nlayers, dropout=0.5):
-        super(TransformerModel, self).__init__()
+        super(TransformerModel_SingleTask, self).__init__()
         from torch.nn import TransformerEncoder, TransformerEncoderLayer
         self.model_type = 'Transformer'
         self.pos_encoder = PositionalEncoding(ninp, dropout)
@@ -37,7 +36,6 @@ class TransformerModel(nn.Module):
     def forward(self, src, src_key_padding_mask, src_mask):
         src = self.encoder(src) * math.sqrt(self.ninp)
         src = self.pos_encoder(src)
-        output = self.transformer_encoder(src, src_mask)
         output = self.transformer_encoder(
             src,
             mask=src_mask,
@@ -47,10 +45,10 @@ class TransformerModel(nn.Module):
         return output
 
 
-class TransformerModel2Head(nn.Module):
+class TransformerModel_MultiTask(nn.Module):
 
     def __init__(self, ntoken_amt, ntoken_ingred, ninp, nhead, nhid, nlayers, dropout=0.5):
-        super(TransformerModel2Head, self).__init__()
+        super(TransformerModel_MultiTask, self).__init__()
         from torch.nn import TransformerEncoder, TransformerEncoderLayer
         self.model_type = 'Transformer'
 
@@ -102,7 +100,7 @@ class TransformerModel2Head(nn.Module):
             src_key_padding_mask=src_key_padding_mask
         )
 
-        # Predict both amt and ingred at every step,
+        # Predict both amt and ingred at every step
         output_ingred = self.ingred_head(output)
         output_amt = self.amt_head(output)
 

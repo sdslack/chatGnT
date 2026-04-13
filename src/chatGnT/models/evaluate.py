@@ -1,7 +1,8 @@
 import torch
 
+# st = single task, mt = multi task
 
-def evaluate(model, dataloader, device, pad_id, criterion):
+def evaluate_st(model, dataloader, device, pad_id, criterion):
     model.eval()  # turn on the evaluation mode
     total_loss = 0.
 
@@ -37,9 +38,7 @@ def evaluate(model, dataloader, device, pad_id, criterion):
     avg_loss = total_loss / len(dataloader)
     return avg_loss
 
-
-
-def evaluate_2head(model, dataloader, device, pad_id_amt, pad_id_ingred, criterion_amt, criterion_ingred):
+def evaluate_mt(model, dataloader, device, pad_id_amt, pad_id_ingred, criterion_amt, criterion_ingred):
     model.eval()  # turn on the evaluation mode
     total_loss = 0.
 
