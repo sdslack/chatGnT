@@ -2,9 +2,15 @@ import torch
 import torch.nn as nn
 import time
 import math
+import copy
+from chatGnT.models.transformer import TransformerModel_SingleTask, TransformerModel_MultiTask
+from chatGnT.models import evaluate
 
+#TODO: re-org so evaluate not loaded here?
+#TODO: switch train_st and train_mt to use config!
+# st = single task, mt = multi task
 
-def train(model, dataloader, device, pad_id, optimizer, criterion, epoch=None, log_interval=None):
+def train_st(model, dataloader, device, pad_id, optimizer, criterion, epoch=None, log_interval=None):
     model.train()  # turn on the train mode
     total_loss = 0.
     epoch_total_loss = 0.
@@ -12,10 +18,8 @@ def train(model, dataloader, device, pad_id, optimizer, criterion, epoch=None, l
     num_batches = len(dataloader)
 
     for batch, (x, y) in enumerate(dataloader):
-        x = x.to(device)   # (batch, seq_len)
-        y = y.to(device)
-        x = x.transpose(0, 1)  # (seq_len, batch)
-        y = y.transpose(0, 1)
+        x = x.to(device).transpose(0, 1)   # (seq_len, batch)
+        y = y.to(device).transpose(0, 1)
 
         # padding mask
         pad_mask = (x == pad_id).transpose(0, 1)  # (batch, seq_len)
@@ -24,17 +28,16 @@ def train(model, dataloader, device, pad_id, optimizer, criterion, epoch=None, l
         seq_len = x.size(0)
         src_mask = model.generate_square_subsequent_mask(seq_len).to(device)
 
-        # Forward pass
+        # forward pass
         output = model(
             src=x,
             src_key_padding_mask=pad_mask,
             src_mask=src_mask)
 
-        vocab_size = output.size(-1)  # get number of classes
-        loss = criterion(
-            output.view(-1, vocab_size),
-            y.reshape(-1))
+        # get loss
+        loss = criterion(output.view(-1, output.size(-1)), y.reshape(-1))
 
+        # backward pass
         optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
@@ -42,7 +45,6 @@ def train(model, dataloader, device, pad_id, optimizer, criterion, epoch=None, l
 
         total_loss += loss.item()
         epoch_total_loss += loss.item()
-
         is_log_step = (log_interval and batch % log_interval == 0 and batch > 0)
         is_last_batch = (batch == num_batches - 1)
 
@@ -62,8 +64,7 @@ def train(model, dataloader, device, pad_id, optimizer, criterion, epoch=None, l
 
     return epoch_total_loss / num_batches
 
-
-def train_2head(model, dataloader, device, pad_id_amt, pad_id_ingred, optimizer, criterion_amt, criterion_ingred, epoch=None, log_interval=None):
+def train_mt(model, dataloader, device, pad_id_amt, pad_id_ingred, optimizer, criterion_amt, criterion_ingred, epoch=None, log_interval=None):
     model.train()  # turn on the train mode
     total_loss = 0.
     epoch_total_loss = 0.
@@ -127,4 +128,159 @@ def train_2head(model, dataloader, device, pad_id_amt, pad_id_ingred, optimizer,
             start_time = time.time()
 
     return epoch_total_loss / num_batches
+
+def build_model(config, device):
+
+    if config["model_version"] == "multi_task":
+        model = TransformerModel_MultiTask(
+            ntoken_amt=config["ntoken_amt"],
+            ntoken_ingred=config["ntoken_ingred"],
+            ninp=config["ninp"],
+            nhead=config["nhead"],
+            nhid=config["nhid"],
+            nlayers=config["nlayers"]).to(device)
+            # Note warning:
+            # UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is
+            # False because encoder_layer.self_attn.batch_first was not True (use
+            # # batch_first for better inference performance)
+    elif config["model_version"] == "single_task":
+        model = TransformerModel_SingleTask(
+            ntoken=config["ntoken"],
+            ninp=config["ninp"],
+            nhead=config["nhead"],
+            nhid=config["nhid"],
+            nlayers=config["nlayers"]).to(device)
+
+    return model
+
+def build_optimizer(model, config):
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=config["learning_rate"],
+        weight_decay=config["weight_decay"]
+    )
+    return optimizer
+
+def build_scheduler(optimizer, config):
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=config["scheduler_step_size"],
+        gamma=config["scheduler_gamma"])
+    return(scheduler)
+
+def train_model_mt(model, train_loader, val_loader, device, optimizer, scheduler, criterion_amt, criterion_ingred, config):
+
+    # Initialize trackers
+    train_losses = []
+    val_losses = []
+    best_val_loss = float("inf")
+    best_model = None
+
+    # Epochs & early stopping
+    epochs = config["epochs"]  # number of epochs
+    patience = config["early_stop"]  # Stop if no improvement for 5 epochs
+    trigger_times = 0 
+
+    for epoch in range(1, epochs + 1):
+        epoch_start_time = time.time()
+        avg_train_loss = train_mt(
+            model,
+            train_loader,
+            device,
+            config["pad_id_amt"],
+            config["pad_id_ingred"],
+            optimizer,
+            criterion_amt,
+            criterion_ingred,
+            epoch,
+            config["log_interval"])
+        train_losses.append(avg_train_loss)
+
+        val_loss = evaluate.evaluate_mt(
+            model,
+            val_loader,
+            device,
+            config["pad_id_amt"],
+            config["pad_id_ingred"],
+            criterion_amt,
+            criterion_ingred)
+        val_losses.append(val_loss)
+
+        print('-' * 89)
+        print(
+            f'Epoch {epoch} | Val Loss: {val_loss:.4f} | '
+            f'Time {(time.time() - epoch_start_time)} | Val PPL: {math.exp(val_loss):.2f}')
+        print('-' * 89)
+
+        # Early stopping & best model check
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            trigger_times = 0
+            best_model = copy.deepcopy(model)
+        else:
+            trigger_times += 1
+            print(f'No improvement. Early stopping counter: {trigger_times}/{patience}')
+            if trigger_times >= patience:
+                print("Early stopping triggered. Ending training.")
+                break
+
+        scheduler.step()  # adjusts learning rate
+
+    return best_model, train_losses, val_losses
+
+def train_model_st(model, train_loader, val_loader, device, optimizer, scheduler, criterion, config):
+
+    # Initialize trackers
+    train_losses = []
+    val_losses = []
+    best_val_loss = float("inf")
+    best_model = None
+
+    # Epochs & early stopping
+    epochs = config["epochs"]  # number of epochs
+    patience = config["early_stop"]  # Stop if no improvement for 5 epochs
+    trigger_times = 0 
+
+    for epoch in range(1, epochs + 1):
+        epoch_start_time = time.time()
+        avg_train_loss = train_st(
+            model,
+            train_loader,
+            device,
+            config["pad_id"],
+            optimizer,
+            criterion,
+            epoch,
+            config["log_interval"])
+        train_losses.append(avg_train_loss)
+
+        val_loss = evaluate.evaluate_st(
+            model,
+            val_loader,
+            device,
+            config["pad_id"],
+            criterion)
+        val_losses.append(val_loss)
+
+        print('-' * 89)
+        print(
+            f'Epoch {epoch} | Val Loss: {val_loss:.4f} | '
+            f'Time {(time.time() - epoch_start_time)} | Val PPL: {math.exp(val_loss):.2f}')
+        print('-' * 89)
+
+        # Early stopping & best model check
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            trigger_times = 0
+            best_model = copy.deepcopy(model)
+        else:
+            trigger_times += 1
+            print(f'No improvement. Early stopping counter: {trigger_times}/{patience}')
+            if trigger_times >= patience:
+                print("Early stopping triggered. Ending training.")
+                break
+
+        scheduler.step()  # adjusts learning rate
+
+    return best_model, train_losses, val_losses
 

@@ -1,7 +1,8 @@
 import torch
 
+# st = single task, mt = multi task
 
-def predict(model, device, pad_id, vocab, inv_vocab, start_ingred, max_len=50, temperature=0.8):
+def predict_st(model, device, pad_id, vocab, inv_vocab, start_ingred, max_len=50, temperature=0.8):
     model.eval()
 
     # Start sequence with group of tokens: amt, unit, ingred, sep
@@ -49,7 +50,7 @@ def predict(model, device, pad_id, vocab, inv_vocab, start_ingred, max_len=50, t
     return tokens
 
 
-def predict_2head(model, device, pad_id_amt, pad_id_ingred, vocab_amt, vocab_ingred, inv_vocab_amt, inv_vocab_ingred, start_tokens, max_len=50, temperature=0.8):
+def predict_mt(model, device, pad_id_amt, pad_id_ingred, vocab_amt, vocab_ingred, inv_vocab_amt, inv_vocab_ingred, start_tokens, max_len=50, temperature=0.8):
     model.eval()
 
     # Start sequence with group of tokens: amt, unit, ingred, sep

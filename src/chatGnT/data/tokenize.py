@@ -1,8 +1,9 @@
 #NOTE: this script is in data/ not because it is dataset specific, but becasue
 # would use it on all datasets as final step of preprocessing.
 
+# st = single task, mt = multi task
 
-def recipe_to_tokens(df):
+def recipe_to_tokens_st(df):
     """
     Convert a DataFrame with columns ['amt_unit', 'ingred'] into structured token sequences.
 
@@ -28,7 +29,7 @@ def recipe_to_tokens(df):
 
     return recipes_tokens
 
-def recipe_to_tokens_2head(df):
+def recipe_to_tokens_mt(df):
     """
     Convert a DataFrame with columns ['amt_unit', 'ingred'] into structured token sequences.
 
@@ -55,7 +56,7 @@ def recipe_to_tokens_2head(df):
 
     return recipes_tokens
 
-def make_vocab(recipes_tokens):
+def make_vocab_st(recipes_tokens):
     """
     Create a vocabulary from tokenized recipes.
 
@@ -72,7 +73,7 @@ def make_vocab(recipes_tokens):
 
     return vocab
 
-def make_vocab_2head(recipes_tokens):
+def make_vocab_mt(recipes_tokens):
     """
     Create a vocabulary from tokenized recipes.
 
@@ -99,7 +100,7 @@ def make_vocab_2head(recipes_tokens):
 
     return vocab_amt, vocab_ingred
 
-def invert_vocab(vocab):
+def invert_vocab_st(vocab):
     """
     Create an inverse vocabulary mapping from ID to token.
 
@@ -111,7 +112,7 @@ def invert_vocab(vocab):
     """
     return {i: token for token, i in vocab.items()}
 
-def invert_vocab_2head(vocab_amt, vocab_ingred):
+def invert_vocab_mt(vocab_amt, vocab_ingred):
     """
     Create an inverse vocabulary mapping from ID to token.
 
@@ -125,7 +126,7 @@ def invert_vocab_2head(vocab_amt, vocab_ingred):
     inv_vocab_ingred = {i: token for token, i in vocab_ingred.items()}
     return inv_vocab_amt, inv_vocab_ingred
 
-def embed_tokens(recipes_tokens, vocab):
+def embed_tokens_st(recipes_tokens, vocab):
     """
     Convert tokenized recipes into sequences of token IDs.
 
@@ -150,8 +151,7 @@ def embed_tokens(recipes_tokens, vocab):
 
     return tokens_padded
 
-
-def embed_tokens_2head(recipes_tokens, vocab_amt, vocab_ingred):
+def embed_tokens_mt(recipes_tokens, vocab_amt, vocab_ingred):
     """
     Convert tokenized recipes into sequences of token IDs.
 
