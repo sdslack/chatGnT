@@ -68,8 +68,10 @@ def train_mt(model, dataloader, device, pad_id_amt, pad_id_ingred, optimizer, cr
     model.train()  # turn on the train mode
     total_loss = 0.
     epoch_total_loss = 0.
+    epoch_gradient_magnitude = 0.
     start_time = time.time()
     num_batches = len(dataloader)
+
 
     for batch, (x_amt, x_ingred, y_amt, y_ingred) in enumerate(dataloader):
         x_amt = x_amt.to(device).transpose(0, 1)  # (seq_len, batch)
@@ -104,6 +106,8 @@ def train_mt(model, dataloader, device, pad_id_amt, pad_id_ingred, optimizer, cr
         # backward pass
         optimizer.zero_grad()
         loss.backward()
+        #accumulate gradient magnitude
+        epoch_gradient_magnitude += torch.norm(torch.stack([p.grad.norm() for p in model.parameters() if p.grad is not None]))
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
 
@@ -127,7 +131,7 @@ def train_mt(model, dataloader, device, pad_id_amt, pad_id_ingred, optimizer, cr
             total_loss = 0
             start_time = time.time()
 
-    return epoch_total_loss / num_batches
+    return epoch_total_loss / num_batches, epoch_gradient_magnitude/num_batches
 
 def build_model(config, device):
 
@@ -173,6 +177,7 @@ def train_model_mt(model, train_loader, val_loader, device, optimizer, scheduler
     # Initialize trackers
     train_losses = []
     val_losses = []
+    gradient_magnitudes = []
     best_val_loss = float("inf")
     best_model = None
 
@@ -183,7 +188,7 @@ def train_model_mt(model, train_loader, val_loader, device, optimizer, scheduler
 
     for epoch in range(1, epochs + 1):
         epoch_start_time = time.time()
-        avg_train_loss = train_mt(
+        avg_train_loss, avg_gradient_magnitude = train_mt(
             model,
             train_loader,
             device,
@@ -195,6 +200,7 @@ def train_model_mt(model, train_loader, val_loader, device, optimizer, scheduler
             epoch,
             config["log_interval"])
         train_losses.append(avg_train_loss)
+        gradient_magnitudes.append(avg_gradient_magnitude)
 
         val_loss = evaluate.evaluate_mt(
             model,
@@ -226,7 +232,7 @@ def train_model_mt(model, train_loader, val_loader, device, optimizer, scheduler
 
         scheduler.step()  # adjusts learning rate
 
-    return best_model, train_losses, val_losses
+    return best_model, train_losses, val_losses, gradient_magnitudes 
 
 def train_model_st(model, train_loader, val_loader, device, optimizer, scheduler, criterion, config):
 
