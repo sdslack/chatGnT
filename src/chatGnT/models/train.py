@@ -312,7 +312,7 @@ def plot_training_history(train_losses, val_losses, gradient_magnitudes=None):
         plt.show()
 
 
-def save_artifacts_mt(best_model, config, vocab_amt, vocab_ingred, train_losses, val_losses, save_dir=(CFG.outputs_dir / "models")):
+def save_artifacts_mt(best_model, config, vocab_amt, vocab_ingred, train_losses, val_losses, save_dir=(CFG.models_dir)):
     metrics = {
         "train_loss": train_losses,
         "val_loss": val_losses,
@@ -334,7 +334,7 @@ def save_artifacts_mt(best_model, config, vocab_amt, vocab_ingred, train_losses,
         "vocab_ingred": vocab_ingred
     }, f"{save_dir}/model_mt.pt")
 
-def save_artifacts_st(best_model, config, vocab, train_losses, val_losses, save_dir=(CFG.outputs_dir / "models")):
+def save_artifacts_st(best_model, config, vocab, train_losses, val_losses, save_dir=(CFG.models_dir)):
     metrics = {
         "train_loss": train_losses,
         "val_loss": val_losses,
@@ -352,7 +352,7 @@ def save_artifacts_st(best_model, config, vocab, train_losses, val_losses, save_
             "nlayers": config["nlayers"],
         },
         "vocab": vocab,
-    }, f"{save_dir}/model.pt")
+    }, f"{save_dir}/model_st.pt")
 
 
 def iter_search_configs(base_config, search_space):
