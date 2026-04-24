@@ -3,6 +3,10 @@
 
 # st = single task, mt = multi task
 
+import re
+
+LONG_DECIMAL_PATTERN = re.compile(r"\d+\.\d{4,}")
+
 def recipe_to_tokens_st(df):
     """
     Convert a DataFrame with columns ['amt_unit', 'ingred'] into structured token sequences.
@@ -63,10 +67,13 @@ def make_vocab_st(recipes_tokens):
     Args:
         recipes_tokens (List[List[str]]): List of tokenized recipes
     """
-    # Flatten all tokens into a single list
-    tokens_flat = [token for recipe in recipes_tokens for token in recipe]
+    token_set = set()
+    for recipe in recipes_tokens:
+        for token in recipe:
+            token_set.add(token)
+
     # Get unique tokens and assign an ID to each
-    vocab = {token: i+1 for i, token in enumerate(sorted(set(tokens_flat)))}
+    vocab = {token: i+1 for i, token in enumerate(sorted(token_set))}
     # Add a padding token for batching & a recipe end token
     vocab["<pad>"] = 0
     vocab["<end>"] = len(vocab)
@@ -100,6 +107,17 @@ def make_vocab_mt(recipes_tokens):
 
     return vocab_amt, vocab_ingred
 
+def find_long_decimal_tokens(vocab):
+    """
+    Return vocab tokens whose string form still contains long decimal values.
+
+    Helpful for notebook sanity checks after preprocessing/tokenization.
+    """
+    return sorted(
+        token for token in vocab
+        if isinstance(token, str) and LONG_DECIMAL_PATTERN.search(token)
+    )
+
 def invert_vocab_st(vocab):
     """
     Create an inverse vocabulary mapping from ID to token.
@@ -126,7 +144,7 @@ def invert_vocab_mt(vocab_amt, vocab_ingred):
     inv_vocab_ingred = {i: token for token, i in vocab_ingred.items()}
     return inv_vocab_amt, inv_vocab_ingred
 
-def embed_tokens_st(recipes_tokens, vocab):
+def encode_tokens_st(recipes_tokens, vocab):
     """
     Convert tokenized recipes into sequences of token IDs.
 
@@ -151,13 +169,14 @@ def embed_tokens_st(recipes_tokens, vocab):
 
     return tokens_padded
 
-def embed_tokens_mt(recipes_tokens, vocab_amt, vocab_ingred):
+def encode_tokens_mt(recipes_tokens, vocab_amt, vocab_ingred):
     """
     Convert tokenized recipes into sequences of token IDs.
 
     Args:
         recipes_tokens (List[List[str]]): List of tokenized recipes
-        vocab (Dict[str, int]): Vocabulary mapping token to ID
+        vocab_amt (Dict[str, int]): Vocabulary mapping amount tokens to IDs
+        vocab_ingred (Dict[str, int]): Vocabulary mapping ingredient tokens to IDs
 
     Returns:
         List[List[int]]: List of recipes represented as sequences of token IDs
@@ -185,6 +204,4 @@ def embed_tokens_mt(recipes_tokens, vocab_amt, vocab_ingred):
         ingred_ids_padded = ingred_ids + [vocab_ingred["<pad>"]] * pad_len
         recipes_encoded.append((amt_ids_padded, ingred_ids_padded))
 
-
-    # Optional: pad sequences to max length in batch later in collate_fn
     return recipes_encoded
