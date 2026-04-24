@@ -47,8 +47,8 @@ class TransformerModel_SingleTask(nn.Module):
 
         output = self.transformer_encoder(
             src,
-            mask=src_mask,
-            src_key_padding_mask=src_key_padding_mask
+            mask=src_mask.to(torch.bool),
+            src_key_padding_mask=src_key_padding_mask.to(torch.bool)
         )
 
         # Predict
@@ -107,8 +107,8 @@ class TransformerModel_MultiTask(nn.Module):
 
         output = self.transformer_encoder(
             src,
-            mask=src_mask,
-            src_key_padding_mask=src_key_padding_mask
+            mask=src_mask.to(torch.bool),
+            src_key_padding_mask=src_key_padding_mask.to(torch.bool)
         )
 
         # Predict both amt and ingred at every step
