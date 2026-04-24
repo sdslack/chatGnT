@@ -13,7 +13,7 @@ class Config:
     seed: int = 42
 
     # Output paths
-    project_root: Path = Path(__file__).resolve().parents[1]
+    project_root: Path = Path(__file__).resolve().parents[2]
     outputs_dir: Path = project_root / "outputs"
     figures_dir: Path = outputs_dir / "figures"
     tables_dir: Path = outputs_dir / "tables"
