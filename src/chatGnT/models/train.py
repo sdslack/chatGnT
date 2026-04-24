@@ -1,3 +1,4 @@
+from chatGnT.config import CFG
 import torch
 import torch.nn as nn
 import time
@@ -8,9 +9,9 @@ from chatGnT.models.transformer import TransformerModel_SingleTask, TransformerM
 from chatGnT.models import evaluate
 from chatGnT.models.structure import mask_single_task_output_logits
 from chatGnT.data import dataloaders
+import json
+import os
 
-#TODO: re-org so evaluate not loaded here?
-#TODO: switch train_st and train_mt to use config!
 # st = single task, mt = multi task
 
 def train_st(model, dataloader, device, pad_id, optimizer, criterion, epoch=None, log_interval=None, vocab=None):
@@ -311,17 +312,12 @@ def plot_training_history(train_losses, val_losses, gradient_magnitudes=None):
         plt.show()
 
 
-def save_multi_task_artifacts(best_model, config, vocab_amt, vocab_ingred, train_losses, val_losses, save_dir="../outputs/models/multi_task"):
-    import json
-    import os
-
-    os.makedirs(save_dir, exist_ok=True)
-
+def save_artifacts_mt(best_model, config, vocab_amt, vocab_ingred, train_losses, val_losses, save_dir=(CFG.outputs_dir / "models")):
     metrics = {
         "train_loss": train_losses,
         "val_loss": val_losses,
     }
-    with open(os.path.join(save_dir, "metrics.json"), "w") as f:
+    with open(os.path.join(save_dir, "metrics_mt.json"), "w") as f:
         json.dump(metrics, f, indent=4)
 
     torch.save({
@@ -336,6 +332,26 @@ def save_multi_task_artifacts(best_model, config, vocab_amt, vocab_ingred, train
         },
         "vocab_amt": vocab_amt,
         "vocab_ingred": vocab_ingred
+    }, f"{save_dir}/model_mt.pt")
+
+def save_artifacts_st(best_model, config, vocab, train_losses, val_losses, save_dir=(CFG.outputs_dir / "models")):
+    metrics = {
+        "train_loss": train_losses,
+        "val_loss": val_losses,
+    }
+    with open(os.path.join(save_dir, "metrics_st.json"), "w") as f:
+        json.dump(metrics, f, indent=4)
+
+    torch.save({
+        "model_state_dict": best_model.state_dict(),
+        "config": {
+            "ntoken": config["ntoken"],
+            "ninp": config["ninp"],
+            "nhead": config["nhead"],
+            "nhid": config["nhid"],
+            "nlayers": config["nlayers"],
+        },
+        "vocab": vocab,
     }, f"{save_dir}/model.pt")
 
 
