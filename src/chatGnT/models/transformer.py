@@ -13,12 +13,16 @@ class TransformerModel_SingleTask(nn.Module):
         super(TransformerModel_SingleTask, self).__init__()
         from torch.nn import TransformerEncoder, TransformerEncoderLayer
         self.model_type = 'Transformer'
+
         self.pos_encoder = PositionalEncoding(ninp, dropout)
         encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
+
         self.encoder = nn.Embedding(ntoken, ninp)
         self.ninp = ninp
+
         self.decoder = nn.Linear(ninp, ntoken)
+
         self.init_weights()
 
     # Mask to block attention to future tokens
@@ -30,17 +34,24 @@ class TransformerModel_SingleTask(nn.Module):
     def init_weights(self):
         initrange = 0.1
         self.encoder.weight.data.uniform_(-initrange, initrange)
+
         self.decoder.bias.data.zero_()
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, src, src_key_padding_mask, src_mask):
+        # Embed
         src = self.encoder(src) * math.sqrt(self.ninp)
+
+        # Positional encoding
         src = self.pos_encoder(src)
+
         output = self.transformer_encoder(
             src,
             mask=src_mask,
             src_key_padding_mask=src_key_padding_mask
         )
+
+        # Predict
         output = self.decoder(output)
         return output
 
