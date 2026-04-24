@@ -3,14 +3,17 @@ import torch.nn as nn
 import time
 import math
 import copy
+from itertools import product
 from chatGnT.models.transformer import TransformerModel_SingleTask, TransformerModel_MultiTask
 from chatGnT.models import evaluate
+from chatGnT.models.structure import mask_single_task_output_logits
+from chatGnT.data import dataloaders
 
 #TODO: re-org so evaluate not loaded here?
 #TODO: switch train_st and train_mt to use config!
 # st = single task, mt = multi task
 
-def train_st(model, dataloader, device, pad_id, optimizer, criterion, epoch=None, log_interval=None):
+def train_st(model, dataloader, device, pad_id, optimizer, criterion, epoch=None, log_interval=None, vocab=None):
     model.train()  # turn on the train mode
     total_loss = 0.
     epoch_total_loss = 0.
@@ -33,6 +36,9 @@ def train_st(model, dataloader, device, pad_id, optimizer, criterion, epoch=None
             src=x,
             src_key_padding_mask=pad_mask,
             src_mask=src_mask)
+
+        if vocab is not None:
+            output = mask_single_task_output_logits(output, vocab)
 
         # get loss
         loss = criterion(output.view(-1, output.size(-1)), y.reshape(-1))
@@ -166,11 +172,211 @@ def build_optimizer(model, config):
     return optimizer
 
 def build_scheduler(optimizer, config):
-    scheduler = torch.optim.lr_scheduler.StepLR(
+    scheduler_type = config.get("scheduler_type", "step")
+
+    if scheduler_type == "reduce_on_plateau":
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='min',
+            factor=config.get("scheduler_factor", 0.5),
+            patience=config.get("scheduler_patience", 4)
+        )
+    elif scheduler_type == "step":
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=config.get("scheduler_step_size", 1),
+            gamma=config.get("scheduler_gamma", 0.95)
+        )
+    else:
+        raise ValueError(
+            f"Unsupported scheduler_type: {scheduler_type}. "
+            "Use 'reduce_on_plateau' or 'step'."
+        )
+
+    return scheduler
+
+
+def step_scheduler(scheduler, config, val_loss=None):
+    scheduler_type = config.get("scheduler_type", "step")
+    if scheduler_type == "reduce_on_plateau":
+        scheduler.step(val_loss)
+    else:
+        scheduler.step()
+
+
+def build_dataloaders(config, tensors):
+    if config["model_version"] == "multi_task":
+        train_loader, val_loader = dataloaders.make_dataloaders_mt(
+            tensors["amt_tensor"],
+            tensors["ingred_tensor"],
+            seed=config.get("seed", 42),
+            batch_size=config["batch_size"],
+            split=config.get("split", 0.85)
+        )
+    elif config["model_version"] == "single_task":
+        train_loader, val_loader = dataloaders.make_dataloaders_st(
+            tensors["tensor"],
+            seed=config.get("seed", 42),
+            batch_size=config["batch_size"],
+            split=config.get("split", 0.85)
+        )
+    else:
+        raise ValueError(f"Unsupported model_version: {config['model_version']}")
+
+    return train_loader, val_loader
+
+
+def build_criteria(config):
+    if config["model_version"] == "multi_task":
+        criterion_amt = nn.CrossEntropyLoss(ignore_index=config["pad_id_amt"])
+        criterion_ingred = nn.CrossEntropyLoss(ignore_index=config["pad_id_ingred"])
+        return criterion_amt, criterion_ingred
+    if config["model_version"] == "single_task":
+        return nn.CrossEntropyLoss(ignore_index=config["pad_id"])
+
+    raise ValueError(f"Unsupported model_version: {config['model_version']}")
+
+
+def run_training(config, tensors, device):
+    """
+    Train one model from config without requiring notebook-side setup of
+    dataloaders, optimizer, scheduler, or loss functions.
+    """
+    train_loader, val_loader = build_dataloaders(config, tensors)
+    model = build_model(config, device)
+    optimizer = build_optimizer(model, config)
+    scheduler = build_scheduler(optimizer, config)
+
+    if config["model_version"] == "multi_task":
+        criterion_amt, criterion_ingred = build_criteria(config)
+        best_model, train_losses, val_losses, gradient_magnitudes = train_model_mt(
+            model,
+            train_loader,
+            val_loader,
+            device,
+            optimizer,
+            scheduler,
+            criterion_amt,
+            criterion_ingred,
+            config
+        )
+        return {
+            "config": copy.deepcopy(config),
+            "best_model": best_model,
+            "train_losses": train_losses,
+            "val_losses": val_losses,
+            "gradient_magnitudes": gradient_magnitudes,
+            "best_val_loss": min(val_losses),
+        }
+
+    criterion = build_criteria(config)
+    best_model, train_losses, val_losses = train_model_st(
+        model,
+        train_loader,
+        val_loader,
+        device,
         optimizer,
-        step_size=config["scheduler_step_size"],
-        gamma=config["scheduler_gamma"])
-    return(scheduler)
+        scheduler,
+        criterion,
+        config
+    )
+    return {
+        "config": copy.deepcopy(config),
+        "best_model": best_model,
+        "train_losses": train_losses,
+        "val_losses": val_losses,
+        "best_val_loss": min(val_losses),
+    }
+
+
+def plot_training_history(train_losses, val_losses, gradient_magnitudes=None):
+    import matplotlib.pyplot as plt
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(train_losses, label="Training Loss")
+    plt.plot(val_losses, label="Validation Loss")
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.title("Training and Validation Loss Over Time")
+    plt.legend()
+    plt.show()
+
+    if gradient_magnitudes is not None:
+        plt.figure(figsize=(10, 5))
+        plt.plot(gradient_magnitudes, label="Gradient Magnitudes")
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
+        plt.title("Gradient Magnitudes Loss Over Time")
+        plt.legend()
+        plt.show()
+
+
+def save_multi_task_artifacts(best_model, config, vocab_amt, vocab_ingred, train_losses, val_losses, save_dir="../outputs/models/multi_task"):
+    import json
+    import os
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    metrics = {
+        "train_loss": train_losses,
+        "val_loss": val_losses,
+    }
+    with open(os.path.join(save_dir, "metrics.json"), "w") as f:
+        json.dump(metrics, f, indent=4)
+
+    torch.save({
+        "model_state_dict": best_model.state_dict(),
+        "config": {
+            "ntoken_amt": config["ntoken_amt"],
+            "ntoken_ingred": config["ntoken_ingred"],
+            "ninp": config["ninp"],
+            "nhead": config["nhead"],
+            "nhid": config["nhid"],
+            "nlayers": config["nlayers"],
+        },
+        "vocab_amt": vocab_amt,
+        "vocab_ingred": vocab_ingred
+    }, f"{save_dir}/model.pt")
+
+
+def iter_search_configs(base_config, search_space):
+    keys = list(search_space.keys())
+    values = [search_space[key] for key in keys]
+
+    for combination in product(*values):
+        trial_config = copy.deepcopy(base_config)
+        for key, value in zip(keys, combination):
+            trial_config[key] = value
+        yield trial_config
+
+
+def _format_search_trial_label(trial_num, trial_config, search_space):
+    label_parts = [f"trial={trial_num}"]
+    for key in search_space:
+        label_parts.append(f"{key}={trial_config[key]}")
+    return " ".join(label_parts)
+
+def run_hyperparameter_search(base_config, search_space, tensors, device):
+    results = []
+    best_result = None
+
+    for trial_num, trial_config in enumerate(iter_search_configs(base_config, search_space), start=1):
+        trial_label = _format_search_trial_label(trial_num, trial_config, search_space)
+        print(f"\nStarting {trial_label}")
+
+        trial_result = run_training(trial_config, tensors, device)
+        trial_result["trial"] = trial_num
+
+        results.append(trial_result)
+        print(
+            f"Finished trial {trial_num} | "
+            f"best_val_loss={trial_result['best_val_loss']:.4f}"
+        )
+
+        if best_result is None or trial_result["best_val_loss"] < best_result["best_val_loss"]:
+            best_result = trial_result
+
+    return best_result, results
 
 def train_model_mt(model, train_loader, val_loader, device, optimizer, scheduler, criterion_amt, criterion_ingred, config):
 
@@ -230,7 +436,7 @@ def train_model_mt(model, train_loader, val_loader, device, optimizer, scheduler
                 print("Early stopping triggered. Ending training.")
                 break
 
-        scheduler.step()  # adjusts learning rate
+        step_scheduler(scheduler, config, val_loss)
 
     return best_model, train_losses, val_losses, gradient_magnitudes 
 
@@ -257,7 +463,8 @@ def train_model_st(model, train_loader, val_loader, device, optimizer, scheduler
             optimizer,
             criterion,
             epoch,
-            config["log_interval"])
+            config["log_interval"],
+            config.get("vocab"))
         train_losses.append(avg_train_loss)
 
         val_loss = evaluate.evaluate_st(
@@ -265,7 +472,8 @@ def train_model_st(model, train_loader, val_loader, device, optimizer, scheduler
             val_loader,
             device,
             config["pad_id"],
-            criterion)
+            criterion,
+            config.get("vocab"))
         val_losses.append(val_loss)
 
         print('-' * 89)
@@ -286,7 +494,6 @@ def train_model_st(model, train_loader, val_loader, device, optimizer, scheduler
                 print("Early stopping triggered. Ending training.")
                 break
 
-        scheduler.step()  # adjusts learning rate
+        step_scheduler(scheduler, config, val_loss)
 
     return best_model, train_losses, val_losses
-
