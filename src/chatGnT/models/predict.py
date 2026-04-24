@@ -1,6 +1,126 @@
+import re
 import torch
+from chatGnT.data import load, preprocess, tokenize
+from chatGnT.models.structure import mask_single_task_next_logits
 
 # st = single task, mt = multi task
+
+def _normalize_lookup_text(text):
+    return re.sub(r"\s+", " ", str(text).strip()).casefold()
+
+
+def _normalize_ingredient_name(text):
+    normalized = re.sub(r"[^a-z0-9]+", "-", str(text).strip().casefold())
+    normalized = re.sub(r"-{2,}", "-", normalized).strip("-")
+    if not normalized:
+        raise ValueError("User input must contain an ingredient or recipe name.")
+    return normalized
+
+
+def _search_text_columns(df, value):
+    matches = []
+    normalized_recipe = _normalize_lookup_text(value)
+    for column in df.columns:
+        series = df[column]
+        if not (
+            getattr(series.dtype, "kind", None) in {"O", "U", "S"}
+            or str(series.dtype).startswith("string")
+        ):
+            continue
+
+        normalized_values = series.dropna().map(_normalize_lookup_text)
+        if normalized_values.empty:
+            continue
+
+        matched_index = normalized_values[normalized_values == normalized_recipe].index
+        if len(matched_index) > 0:
+            matches.append((column, df.loc[matched_index].copy()))
+
+    if not matches:
+        return None
+
+    matches.sort(key=lambda item: len(item[1]))
+    return matches[0][1]
+
+
+def _has_preprocess_columns(df):
+    return {"ingredient_name", "ingredient_link"}.issubset(df.columns)
+
+
+def _ensure_recipe_id_column(df):
+    normalized = df.copy()
+    if "id" in normalized.columns:
+        return normalized
+
+    for column in normalized.columns:
+        if column in {"ingredient_name", "ingredient_link", "ingred", "amt", "unit", "amt_unit"}:
+            continue
+        unique_values = normalized[column].dropna().unique()
+        if len(unique_values) == 1:
+            normalized["id"] = normalized[column]
+            return normalized
+
+    raise ValueError(
+        "Recipe rows were found, but no recipe identifier column could be normalized to 'id'."
+    )
+
+
+def _resolve_recipe_ingredient_rows(recipe_name, recipes_df):
+    recipe_rows = _search_text_columns(recipes_df, recipe_name)
+    if recipe_rows is None:
+        return None
+
+    if not _has_preprocess_columns(recipe_rows):
+        raise ValueError(
+            "Recipe rows were found, but they do not contain ingredient_name and ingredient_link."
+        )
+
+    return _ensure_recipe_id_column(recipe_rows)
+
+
+def prepare_mt_start_tokens(user_input, drinks=None, ingred=None):
+    """
+    Convert a raw user string into the ``start_tokens`` format required by
+    ``predict_mt``.
+
+    Single ingredients are treated as one part, e.g. ``gin`` becomes:
+    ``[('<amt>1 part</amt>', '<ingred>gin</ingred>')]``
+
+    Recipe names are looked up in the raw drinks dataframe, then passed through
+    the existing clean/filter/tokenize pipeline so the returned tokens match the
+    training format.
+    """
+    raw_input = str(user_input).strip()
+    if not raw_input:
+        raise ValueError("User input must contain an ingredient or recipe name.")
+
+    recipes_df = None
+    if drinks is not None and _has_preprocess_columns(drinks):
+        recipes_df = drinks
+    elif ingred is not None and _has_preprocess_columns(ingred):
+        recipes_df = ingred
+    elif drinks is None and ingred is None:
+        recipes_df = load.load_all()
+
+    recipe_rows = None if recipes_df is None else _resolve_recipe_ingredient_rows(raw_input, recipes_df)
+    if recipe_rows is not None:
+        cleaned = preprocess.clean_recipes(recipe_rows)
+        filtered = preprocess.filter_recipes(cleaned)
+        if filtered.empty:
+            raise ValueError(
+                f"Recipe '{raw_input}' was found but was removed by preprocessing."
+            )
+
+        recipes_tokens = tokenize.recipe_to_tokens_mt(filtered)
+        if not recipes_tokens:
+            raise ValueError(
+                f"Recipe '{raw_input}' was found but no tokens could be generated."
+            )
+        return recipes_tokens[0]
+
+    ingredient = _normalize_ingredient_name(raw_input)
+    return [(f"<amt>1 part</amt>", f"<ingred>{ingredient}</ingred>")]
+
 
 def predict_st(model, device, pad_id, vocab, inv_vocab, start_ingred, max_len=50, temperature=0.8):
     model.eval()
@@ -26,11 +146,7 @@ def predict_st(model, device, pad_id, vocab, inv_vocab, start_ingred, max_len=50
             )
 
             logits = output[-1, 0, :]
-
-            # block repeated <sep>
-            last_token = inv_vocab[ids[-1]]
-            if last_token == "<sep>":
-                logits[vocab["<sep>"]] = -float("inf")
+            logits = mask_single_task_next_logits(logits, vocab, current_length=len(ids))
 
             # Sampling for diversity
             # Convert to probabilities with temperature
@@ -101,4 +217,3 @@ def predict_mt(model, device, pad_id_amt, pad_id_ingred, vocab_amt, vocab_ingred
     # Convert back to tokens
     tokens = [(inv_vocab_amt[i], inv_vocab_ingred[j]) for i, j in zip(amt_ids, ingred_ids)]
     return tokens
-
