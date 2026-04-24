@@ -13,6 +13,9 @@ class Config:
     seed: int = 42
 
     # Output paths
+    tool_root: Path = Path(__file__).resolve().parents[1]
+    models_dir: Path = tool_root / "assets"
+
     project_root: Path = Path(__file__).resolve().parents[2]
     outputs_dir: Path = project_root / "outputs"
     figures_dir: Path = outputs_dir / "figures"
@@ -22,6 +25,7 @@ class Config:
     top_n_ingredients: int = 30
 
 def ensure_dirs(cfg: Config) -> None:
+    cfg.models_dir.mkdir(parents=True, exist_ok=True)
     cfg.outputs_dir.mkdir(parents=True, exist_ok=True)
     cfg.figures_dir.mkdir(parents=True, exist_ok=True)
     cfg.tables_dir.mkdir(parents=True, exist_ok=True)
