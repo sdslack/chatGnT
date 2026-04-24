@@ -1,8 +1,9 @@
 import torch
+from chatGnT.models.structure import mask_single_task_output_logits
 
 # st = single task, mt = multi task
 
-def evaluate_st(model, dataloader, device, pad_id, criterion):
+def evaluate_st(model, dataloader, device, pad_id, criterion, vocab=None):
     model.eval()  # turn on the evaluation mode
     total_loss = 0.
 
@@ -26,7 +27,9 @@ def evaluate_st(model, dataloader, device, pad_id, criterion):
                 src=x,
                 src_key_padding_mask=pad_mask,
                 src_mask=src_mask)
-            # output_flat = output.view(-1, ntokens)
+
+            if vocab is not None:
+                output = mask_single_task_output_logits(output, vocab)
 
             vocab_size = output.size(-1)  # get number of classes
             loss = criterion(
@@ -74,4 +77,3 @@ def evaluate_mt(model, dataloader, device, pad_id_amt, pad_id_ingred, criterion_
 
     avg_loss = total_loss / len(dataloader)
     return avg_loss
-
