@@ -1,6 +1,7 @@
 from chatGnT.config import CFG
 from chatGnT import utils
 
+
 def load_ingred():
     return utils.load_kagglehub_dataset(
         CFG.dataset_id,
@@ -13,8 +14,20 @@ def load_drinks():
         CFG.drinks_path
     )
 
+def merge_drinks_into_ingred(ingred, drinks, on=None):
+    merge_column = "id"
+    drink_columns = [column for column in drinks.columns if column != merge_column]
+
+    return ingred.merge(
+        drinks[[merge_column] + drink_columns],
+        on=merge_column,
+        how="left",
+        validate="many_to_one",
+    )
+
+
 def load_all():
-    return {
-        "ingred": load_ingred(),
-        "drinks": load_drinks(),
-    }
+    ingred = load_ingred()
+    drinks = load_drinks()
+
+    return merge_drinks_into_ingred(ingred, drinks)
