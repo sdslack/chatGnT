@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chatGnT"
+version = "0.1.0"
+description = "Cocktail recipe generation CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+  "torch",
+  "pandas",
+  "numpy",
+  "kagglehub[pandas-datasets]"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "jupyterlab",
+  "ipykernel",
+  "matplotlib",
+  "seaborn"
+]
+
+[project.scripts]
+chatgnt = "chatGnT.cli:main"
+
+[tool.setuptools.package-data]
+chatGnT = ["assets/*"]
