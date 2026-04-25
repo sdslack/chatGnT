@@ -28,7 +28,7 @@ def main():
 
     # Print recommended daily value alcohol warning
     print("chatG&T encourages you to drink responsibly!\n")
-    print("The recommended daily distilled alcohol intake is 1.5 parts.\n")
+    print("A standard serving of a base spirit is 1.5 parts/oz,\nand daily intake should generally not exceed one to two servings.\n")
     print("Your generated recipe is:\n")
     
     if args.model_type == "st":
