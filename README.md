@@ -31,13 +31,8 @@ chatgnt --input "margarita"
 '1 dash angostura bitters']
 
 ```
-Run again until you see a recipe you want to try:
 
-```text
-['1.5 parts tequila', '0.5 part triple sec', '0.5 part triple sec',
-'0.5 part pineapple juice']
-
-```
+You can run this repeatedly to see different recipes!
 
 Instead of a cocktail name, you can also input an ingredient to generate new
 recipes that include it:
@@ -65,7 +60,7 @@ chatgnt --input "gin" --model-type "mt"
 ```
 
 ```text
-['1 part gin', '1.5 parts dry vermouth', '0.75 part grenadine', '0.75 part lemon peel']
+['1 part gin', '1 part light rum', '1 part triple sec', '0.25 part sour mix']
 
 ```
 
